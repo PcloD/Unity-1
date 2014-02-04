@@ -22,6 +22,8 @@ public class SpriteOverview : EditorWindow
 	private Vector2 _scroll = Vector2.zero;
 	private GameObject goTarget = null;
 	private int _instanceID;
+	// layer name to layer order
+	private SortedDictionary<string, int> dicLayers = new SortedDictionary<string, int>();
 	// save key and layerID/order
 	private Dictionary<string, int> dicKeys = new Dictionary<string, int>();
 	private bool _dirty = false;
@@ -65,11 +67,18 @@ public class SpriteOverview : EditorWindow
 		return (int[])sortingLayerUniqueIDsProperty.GetValue(null, new object[0]);
 	}
 
-	void OnEnable()
+	void OnFocus()
 	{
+		// update layerID/layerName to layer order
+		dicLayers.Clear();
+		int id = 0;
 		string[] layers = GetSortingLayerNames();
 		foreach(string l in layers)
-			Debug.Log(l);
+			dicLayers.Add(l.ToLower(), id++);
+	}
+
+	void OnEnable()
+	{
 	}
 
 	void OnGUI()
@@ -112,7 +121,7 @@ public class SpriteOverview : EditorWindow
 			for(int i = 0; i < SpriteManager.Count; i++)
 			{
 				#region layer main
-				LayerValue layer = SpriteManager.list[i];
+				SRLayer layer = SpriteManager.list[i];
 
 				// set color
 				GUI.backgroundColor = allColors[i % allColors.Length];
@@ -323,8 +332,7 @@ public class SpriteOverview : EditorWindow
 								}
 								
 								GUI.backgroundColor = oldColor;
-							}
-							else
+							} else
 							{
 								// todo show texture
 							}
@@ -546,12 +554,12 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 	#endregion
 }
 
-public class LayerValue : SRInfo, IEquatable<LayerValue>, IComparable<LayerValue>
+public class SRLayer : SRInfo, IEquatable<SRLayer>, IComparable<SRLayer>
 {
 	// <object name, order>
 	public List<List<SRInfo>> Orders;
 	
-	public LayerValue(int idx, string name, SpriteRenderer sr) : base(idx, name, sr)
+	public SRLayer(int idx, string name, SpriteRenderer sr) : base(idx, name, sr)
 	{
 		Orders = new List<List<SRInfo>>();
 	}
@@ -610,7 +618,7 @@ public class LayerValue : SRInfo, IEquatable<LayerValue>, IComparable<LayerValue
 	}
 	
 	// Default comparer for Part type. 
-	public int CompareTo(LayerValue comparePart)
+	public int CompareTo(SRLayer comparePart)
 	{
 		// A null value means that this object is greater. 
 		if(comparePart == null)
@@ -619,7 +627,7 @@ public class LayerValue : SRInfo, IEquatable<LayerValue>, IComparable<LayerValue
 			return this.Index.CompareTo(comparePart.Index);
 	}
 	
-	public bool Equals(LayerValue other)
+	public bool Equals(SRLayer other)
 	{
 		if(other == null)
 			return false;
@@ -632,8 +640,9 @@ public class LayerValue : SRInfo, IEquatable<LayerValue>, IComparable<LayerValue
 static public class SpriteManager
 {
 	// sorting layer, sorting order
-	static private Dictionary<int, LayerValue> _layers = new Dictionary<int, LayerValue>();
-	static private List<LayerValue> _layerlist = new List<LayerValue>();
+//	static private Dictionary<int, LayerValue> _layers = new Dictionary<int, LayerValue>();
+	static private Dictionary<string, SRLayer> _layers = new Dictionary<string, SRLayer>();
+	static private List<SRLayer> _layerlist = new List<SRLayer>();
 
 	static public void Update(SpriteRenderer[] sr)
 	{
@@ -642,21 +651,25 @@ static public class SpriteManager
 		for(int i = 0; i < sr.Length; i++)
 		{
 			int layerID = sr[i].sortingLayerID;
+			string layerName = sr[i].sortingLayerName.ToLower();
 			
-			LayerValue tmp = null;
-			if(!_layers.ContainsKey(layerID))
+			SRLayer tmp = null;
+//			if(!_layers.ContainsKey(layerID))
+			if(!_layers.ContainsKey(layerName))
 			{
-				tmp = new LayerValue(layerID, sr[i].gameObject.name, sr[i]);
-				_layers.Add(layerID, tmp);
+				tmp = new SRLayer(layerID, sr[i].gameObject.name, sr[i]);
+//				_layers.Add(layerID, tmp);
+				_layers.Add(layerName, tmp);
 			}
 			
-			tmp = _layers[layerID];
+//			tmp = _layers[layerID];
+			tmp = _layers[layerName];
 			string name = string.Format("{0}/{1}", sr[i].transform.parent.name, sr[i].gameObject.name);
 			tmp.Add(sr[i].sortingOrder, name, sr[i]);
 		}
 		
 		// sorting Orders data
-		foreach(LayerValue data in _layers.Values)
+		foreach(SRLayer data in _layers.Values)
 		{
 			data.Orders.Sort(delegate(List<SRInfo> x, List<SRInfo> y)
 			{
@@ -689,18 +702,26 @@ static public class SpriteManager
 		Update(sr);
 	}
 	
-	static public List<LayerValue> list
+	static public List<SRLayer> list
 	{
 		get
 		{
 			// to list and sotring Layers data
 			_layerlist.Clear();
-			foreach(LayerValue data in _layers.Values)
+			foreach(SRLayer data in _layers.Values)
 				_layerlist.Add(data);
 			
 			_layerlist.Sort();
 			return _layerlist;
 		}
+	}
+
+	static public SRLayer Layer(string layername)
+	{
+		if(_layers.ContainsKey(layername))
+			return _layers[layername];
+		else
+			return null;
 	}
 
 	static public int Count
