@@ -1,12 +1,23 @@
-﻿/*	This script can help to manage your SpriteRenderer's Layer and Order.
+/*	This script can help to manage your SpriteRenderer's Layer and Order.
+ * 	version: 1.1
  * 
  * 	todo:
  * 	- calculate the draw call in gameobject(or scene).
- *  - show sprite texture.
- *  - get all layers name, layer's draw order, and make table for layer name to layer id
+ *	- show sprite texture.
+ *	- use list to temp the all order data.
+ * 
+ * 	done:
+ * 	1.1:
+ * 	- get all layers name(use System.Reflection).
+ * 	- modify the class name LayerValue to SRLayer.
+ * 	1.0:
+ * 	- show same layer, sorted order in layer.
+ * 	- quick to modify layer, order.
+ * 	- select, revert, save GameObject to asset.
  * 
  * 	referance:
- *  - UIDrawCallOverview: http://www.tasharen.com/forum/index.php?topic=6166.0
+ *	- UIDrawCallOverview: http://www.tasharen.com/forum/index.php?topic=6166.0
+ * 	- Sortlayer Renderer Extension: http://answers.unity3d.com/questions/604703/sortlayer-renderer-extension.html
  * */
 /*
 sprite draw call算法
@@ -44,8 +55,6 @@ public class SpriteOverview : EditorWindow
 	private Vector2 _scroll = Vector2.zero;
 	private GameObject goTarget = null;
 	private int _instanceID;
-	// layer name to layer order
-	private SortedDictionary<string, int> dicLayers = new SortedDictionary<string, int>();
 	// save key and layerID/order
 	private Dictionary<string, int> dicKeys = new Dictionary<string, int>();
 	private bool _dirty = false;
@@ -65,7 +74,7 @@ public class SpriteOverview : EditorWindow
 	//see http://www.rapidtables.com/web/color/RGB_Color.htm#rgb-format
 	};
 	#endregion
-
+	
 	[MenuItem("Tools/Sprite Overview")]
 	static void SpriteOverviewWin()
 	{
@@ -73,36 +82,12 @@ public class SpriteOverview : EditorWindow
 		wnd.autoRepaintOnSceneChange = true;
 	}
 
-	// Get the sorting layer names
-	public string[] GetSortingLayerNames()
-	{
-		Type internalEditorUtilityType = typeof(InternalEditorUtility);
-		PropertyInfo sortingLayersProperty = internalEditorUtilityType.GetProperty("sortingLayerNames", BindingFlags.Static | BindingFlags.NonPublic);
-		return (string[])sortingLayersProperty.GetValue(null, new object[0]);
-	}
-
-	// Get the unique sorting layer IDs -- tossed this in for good measure
-	public int[] GetSortingLayerUniqueIDs()
-	{
-		Type internalEditorUtilityType = typeof(InternalEditorUtility);
-		PropertyInfo sortingLayerUniqueIDsProperty = internalEditorUtilityType.GetProperty("sortingLayerUniqueIDs", BindingFlags.Static | BindingFlags.NonPublic);
-		return (int[])sortingLayerUniqueIDsProperty.GetValue(null, new object[0]);
-	}
-
 	void OnFocus()
 	{
-		// update layerID/layerName to layer order
-		dicLayers.Clear();
-		int id = 0;
-		string[] layers = GetSortingLayerNames();
-		foreach(string l in layers)
-			dicLayers.Add(l.ToLower(), id++);
+		// update layer name by order
+		SpriteManager.UpdateLayerOrder();
 	}
-
-	void OnEnable()
-	{
-	}
-
+	
 	void OnGUI()
 	{
 		if(_dirty)
@@ -110,20 +95,20 @@ public class SpriteOverview : EditorWindow
 			dicKeys.Clear();
 			_dirty = false;
 		}
-
+		
 		EditorGUILayout.BeginVertical();
 		_scroll = GUILayout.BeginScrollView(_scroll);
-
+		
 		#region target
 		// set, select gameobject
 		EditorGUILayout.BeginHorizontal();
 		goTarget = EditorGUILayout.ObjectField("Target", goTarget, typeof(GameObject), true) as GameObject;
 		EditorGUILayout.EndHorizontal();
-
+		
 		// revert, apply prefab
 		DrawGOBehavior(goTarget);
 		#endregion target
-
+		
 		if(goTarget)
 		{
 			// delete key if not same valid GameObject
@@ -136,23 +121,33 @@ public class SpriteOverview : EditorWindow
 						EditorPrefs.DeleteKey(tmpkey);
 				}
 			}
-
+			
 			// update sprites inforamtion
 			SpriteManager.Update(goTarget);
 
+			#region draw call information
+			GUILayout.BeginHorizontal();
+			GUILayout.Label(string.Format("Draw calls: {0}", SpriteManager.DrawCalls), GUILayout.Width(200f));
+			if(GUILayout.Button("Get Draw Call"))
+			{
+				SpriteManager.GetDrawCalls(true);
+			}
+			GUILayout.EndHorizontal();
+			#endregion draw call information
+			
 			for(int i = 0; i < SpriteManager.Count; i++)
 			{
 				#region layer main
 				SRLayer layer = SpriteManager.list[i];
-
+				
 				// set color
 				GUI.backgroundColor = allColors[i % allColors.Length];
 				GUI.color = Color.white;
 				Color oldColor = defaultColor;
-
+				
 				#region layer field
 				GUILayout.BeginHorizontal();
-
+				
 				// layer field
 				int currentLayer = layer.Index;
 				string keyStr = string.Format("L_{0}", currentLayer);
@@ -163,16 +158,16 @@ public class SpriteOverview : EditorWindow
 				}
 				GUILayout.Label("Layer ID", GUILayout.Width(60f));
 				dicKeys[keyStr] = EditorGUILayout.IntField(massLayer, GUILayout.Width(50f));
-
+				
 				GUILayout.EndHorizontal();
 				#endregion layer field
-
+				
 				#region layer apply/reset
 				if(massLayer != currentLayer)
 				{
 					GUILayout.BeginHorizontal();
 					oldColor = GUI.backgroundColor;
-
+					
 					// apply
 					GUI.backgroundColor = new Color(0.4f, 1f, 0.4f);
 					if(GUILayout.Button("Apply", GUILayout.Width(100f)))
@@ -186,7 +181,7 @@ public class SpriteOverview : EditorWindow
 								tempOrders[iO].SetLayerID(massLayer);
 							}
 						}
-
+						
 						// delete key
 						EditorPrefs.DeleteKey(keyStr);
 						for(int o = 0; o < layer.Orders.Count; o++)
@@ -194,11 +189,11 @@ public class SpriteOverview : EditorWindow
 							tempOrders = layer.Orders[o];
 							if(tempOrders.Count == 0)
 								continue;
-
+							
 							string okey = string.Format("L_{0}O_{1}", currentLayer, tempOrders[0].Index);
 							EditorPrefs.DeleteKey(okey);
 						}
-
+						
 						_dirty = true;
 						GUI.FocusControl(null);
 						EditorUtility.SetDirty(goTarget);
@@ -217,25 +212,26 @@ public class SpriteOverview : EditorWindow
 					GUILayout.EndHorizontal();
 				}
 				#endregion layer apply/reset
-
+				
 				// layer fold
-				bool layerFoldedOut = DrawHeader(string.Format("<b>Sorting Layer {0} ({1})</b>", layer.Index, layer.LayerName), keyStr);
+				string headerStr = string.Format("<b>Sorting Layer {0} ({1}) - Count: {2}</b>", layer.Index, layer.LayerName, layer.Count);
+				bool layerFoldedOut = DrawHeader(headerStr, keyStr);
 				if(!layerFoldedOut)
 					continue;
 				#endregion layer main
-
+				
 				StyleEx.BeginContent();
-
+				
 				#region orders main
 				for(int o = 0; o < layer.Orders.Count; o++)
 				{
 					tempOrders = layer.Orders[o];
 					if(tempOrders.Count == 0)
 						continue;
-
+					
 					#region order field, fold
 					GUILayout.BeginHorizontal();
-
+					
 					// order field
 					int currentOrder = tempOrders[0].Index;
 					keyStr = string.Format("L_{0}O_{1}", currentLayer, currentOrder);
@@ -247,20 +243,20 @@ public class SpriteOverview : EditorWindow
 					}
 					GUILayout.Label("Order", GUILayout.Width(40f));
 					dicKeys[keyStr] = EditorGUILayout.IntField(massOrder, GUILayout.Width(50f));
-
+					
 					// order fold
 					string collapserName = string.Format("<b>Cont: {0}</b> - Click to {1}", tempOrders.Count, (orderFoldedOut ? "collapse" : "expand"));
 					bool foldedOut = DrawOrderCollapser(collapserName, keyStr, orderFoldedOut);
-
+					
 					GUILayout.EndHorizontal();
 					#endregion order field, fold
-
+					
 					#region order apply/reset
 					if(massOrder != currentOrder)
 					{
 						GUILayout.BeginHorizontal();
 						oldColor = GUI.backgroundColor;
-
+						
 						// apply
 						GUI.backgroundColor = new Color(0.4f, 1f, 0.4f);
 						if(GUILayout.Button("Apply", GUILayout.Width(100f)))
@@ -270,15 +266,15 @@ public class SpriteOverview : EditorWindow
 							{
 								tempOrders[iO].SetOrder(massOrder);
 							}
-
+							
 							// delete key
 							EditorPrefs.DeleteKey(keyStr);
-
+							
 							_dirty = true;
 							GUI.FocusControl(null);
 							EditorUtility.SetDirty(goTarget);
 						}
-
+						
 						// reset
 						GUI.backgroundColor = new Color(1f, 0.8f, 0.8f);
 						if(GUILayout.Button("Reset", GUILayout.Width(100f)))
@@ -287,12 +283,12 @@ public class SpriteOverview : EditorWindow
 							GUI.FocusControl(null);
 							EditorUtility.SetDirty(goTarget);
 						}
-
+						
 						GUI.backgroundColor = oldColor;
 						GUILayout.EndHorizontal();
 					}
 					#endregion order apply/reset
-
+					
 					#region same set of order
 					if(foldedOut)
 					{
@@ -304,14 +300,14 @@ public class SpriteOverview : EditorWindow
 						{
 							GUILayout.BeginHorizontal();
 							GUILayout.Space(10f);
-
+							
 							// button to select gameobject
 							GUI.backgroundColor = defaultColor;
 							if(GUILayout.Button(tempOrders[iW].Name, GUILayout.ExpandWidth(false)))
 							{
 								Selection.activeGameObject = tempOrders[iW].gameObject;
 							}
-
+							
 							// order field
 							GUI.backgroundColor = oldColor;
 							GUILayout.Label("Order", GUILayout.Width(40f));
@@ -323,7 +319,7 @@ public class SpriteOverview : EditorWindow
 								singleOrder = dicKeys[keyStr];
 							}
 							dicKeys[keyStr] = EditorGUILayout.IntField(singleOrder, GUILayout.Width(50f));
-
+							
 							#region single order apply/reset, show texture
 							GUI.skin.button.alignment = alignBefore;
 							if(singleOrder != currentOrder)
@@ -359,30 +355,46 @@ public class SpriteOverview : EditorWindow
 								// todo show texture
 							}
 							#endregion single order apply/reset, show texture
-
+							
 							GUILayout.EndHorizontal();
 						}
 						GUI.backgroundColor = oldColor;
 						GUI.skin.button.alignment = alignBefore;
 					}
 					#endregion same set of order
-
+					
 					GUILayout.Space(3f);
 				}
 				#endregion orders main
-
+				
 				StyleEx.EndContent();
 			}
 			GUI.color = Color.white;
 			GUI.backgroundColor = Color.white;
 		}
-
+		
 		GUILayout.EndScrollView();
 		EditorGUILayout.EndVertical();
 	}
 
 	#region function
-
+	static private void ApplyToTarget(GameObject go)
+	{
+		UnityEngine.Object obj = PrefabUtility.GetPrefabParent(go);
+		if(obj)
+		{
+			if(go.transform.root)
+			{
+				PrefabUtility.ReplacePrefab(go.transform.root.gameObject, obj, ReplacePrefabOptions.ConnectToPrefab);
+			} else
+				PrefabUtility.ReplacePrefab(go, obj, ReplacePrefabOptions.ConnectToPrefab);
+		} else
+			Debug.LogWarning("The prefab has no parent!");
+	}
+	#endregion function
+	
+	#region draw function
+	
 	static private bool DrawOrderCollapser(string text, string key, bool forceOn)
 	{
 		bool state = EditorPrefs.GetBool(key, forceOn);
@@ -405,10 +417,10 @@ public class SpriteOverview : EditorWindow
 		GUI.backgroundColor = oldColor;
 		if(!forceOn && !state)
 			GUILayout.Space(3f);
-
+		
 		return state;
 	}
-
+	
 	static private bool DrawHeader(string text, string key)
 	{
 		bool state = EditorPrefs.GetBool(key, true);
@@ -422,23 +434,23 @@ public class SpriteOverview : EditorWindow
 			state = !state;
 		if(GUI.changed)
 			EditorPrefs.SetBool(key, state);
-
+		
 		GUILayout.Space(2f);
 		GUILayout.EndHorizontal();
-
+		
 		if(!state)
 			GUILayout.Space(3f);
-
+		
 		return state;
 	}
-
+	
 	static private void DrawGOBehavior(GameObject go)
 	{
 		if(!go)
 			return;
-
+		
 		EditorGUILayout.BeginHorizontal();
-
+		
 		if(GUILayout.Button("Select Target", GUILayout.Width(150f)))
 		{
 			Selection.activeGameObject = go;
@@ -449,16 +461,12 @@ public class SpriteOverview : EditorWindow
 		}
 		if(GUILayout.Button("Apply Target", GUILayout.Width(150f)))
 		{
-			UnityEngine.Object obj = PrefabUtility.GetPrefabParent(go);
-			if(obj)
-				PrefabUtility.ReplacePrefab(go, obj, ReplacePrefabOptions.ConnectToPrefab);
-			else
-				Debug.LogWarning("The prefab has no parent!");
+			ApplyToTarget(go);
 		}
 		
 		EditorGUILayout.EndHorizontal();
 	}
-	#endregion
+	#endregion draw function
 }
 
 #region sub area
@@ -490,7 +498,7 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 	private int mIndex;
 	public SpriteRenderer SpriteRender;
 	public string Name;
-
+	
 	public int Index
 	{
 		get
@@ -498,18 +506,18 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 			return mIndex;
 		}
 	}
-
+	
 	public string LayerName
 	{
 		get
 		{
 			if(SpriteRender)
-				return (string.IsNullOrEmpty(SpriteRender.sortingLayerName) ? "Default" : SpriteRender.sortingLayerName);
+				return (string.IsNullOrEmpty(SpriteRender.sortingLayerName) ? SpriteManager.DEFAULTLAYERNAME : SpriteRender.sortingLayerName);
 			else
 				return string.Empty;
 		}
 	}
-
+	
 	public GameObject gameObject
 	{
 		get
@@ -520,6 +528,21 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 				return null;
 		}
 	}
+
+	public string TextureName
+	{
+		get
+		{
+			if(SpriteRender)
+			{
+				if(SpriteRender.sprite)
+					return SpriteRender.sprite.texture.name;
+				else
+					return string.Empty;
+			} else
+				return string.Empty;
+		}
+	}
 	
 	public SRInfo(int idx, string name, SpriteRenderer sr)
 	{
@@ -527,21 +550,21 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 		Name = name;
 		mIndex = idx;
 	}
-
+	
 	public void SetOrder(int order)
 	{
 		if(SpriteRender)
 			SpriteRender.sortingOrder = order;
 	}
-
+	
 	public void SetLayerID(int layerID)
 	{
 		if(SpriteRender)
 			SpriteRender.sortingLayerID = layerID;
 	}
-
+	
 	#region interface
-
+	
 	public override bool Equals(object obj)
 	{
 		if(obj == null || !(obj is SRInfo))
@@ -555,7 +578,7 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 	{
 		return Index.GetHashCode();
 	}
-
+	
 	// Default comparer for Part type. 
 	public int CompareTo(SRInfo comparePart)
 	{
@@ -572,7 +595,7 @@ public class SRInfo : IEquatable<SRInfo>, IComparable<SRInfo>
 			return false;
 		return (this.Index == other.Index) && (this.Name == other.Name);
 	}
-
+	
 	#endregion
 }
 
@@ -602,11 +625,11 @@ public class SRLayer : SRInfo, IEquatable<SRLayer>, IComparable<SRLayer>
 				continue;
 			if(ovs[0].Index != tmp.Index)
 				continue;
-
+			
 			idx = i;
 			break;
 		}
-
+		
 		if(idx == -1)
 		{
 			List<SRInfo> tmpOVs = new List<SRInfo>();
@@ -622,7 +645,7 @@ public class SRLayer : SRInfo, IEquatable<SRLayer>, IComparable<SRLayer>
 	{
 		Orders.Clear();
 	}
-
+	
 	#region interface
 	
 	public override bool Equals(object obj)
@@ -661,37 +684,110 @@ public class SRLayer : SRInfo, IEquatable<SRLayer>, IComparable<SRLayer>
 
 static public class SpriteManager
 {
-	// sorting layer, sorting order
-//	static private Dictionary<int, LayerValue> _layers = new Dictionary<int, LayerValue>();
-	static private Dictionary<string, SRLayer> _layers = new Dictionary<string, SRLayer>();
-	static private List<SRLayer> _layerlist = new List<SRLayer>();
+	public const  string DEFAULTLAYERNAME = "Default";
+	// layer name by draw order
+	static private List<string> orderLayerNames = new List<string>();
+//	static private Dictionary<int, LayerValue> _Layers = new Dictionary<int, LayerValue>();
+	static private Dictionary<string, SRLayer> _Layers = new Dictionary<string, SRLayer>();
+	static private List<SRLayer> listLayers = new List<SRLayer>();
+
+	// Get the sorting layer names
+	static private string[] GetSortingLayerNames()
+	{
+		Type internalEditorUtilityType = typeof(InternalEditorUtility);
+		PropertyInfo sortingLayersProperty = internalEditorUtilityType.GetProperty("sortingLayerNames", BindingFlags.Static | BindingFlags.NonPublic);
+		return (string[])sortingLayersProperty.GetValue(null, new object[0]);
+	}
+
+	/*
+	// Get the unique sorting layer IDs -- tossed this in for good measure
+	static private int[] GetSortingLayerUniqueIDs()
+	{
+		Type internalEditorUtilityType = typeof(InternalEditorUtility);
+		PropertyInfo sortingLayerUniqueIDsProperty = internalEditorUtilityType.GetProperty("sortingLayerUniqueIDs", BindingFlags.Static | BindingFlags.NonPublic);
+		return (int[])sortingLayerUniqueIDsProperty.GetValue(null, new object[0]);
+	}
+	*/
+
+	static public int GetDrawCalls(bool log)
+	{
+		if(orderLayerNames.Count == 0)
+			return 0;
+
+		List<SRInfo> allsr = new List<SRInfo>();
+		foreach(string l in orderLayerNames)
+		{
+			if(!_Layers.ContainsKey(l))
+				continue;
+
+			SRLayer srl = _Layers[l];
+			foreach(List<SRInfo> srlist in srl.Orders.AsReadOnly())
+			{
+				srlist.Sort();
+				allsr.AddRange(srlist);
+			}
+		}
+
+		if(allsr.Count == 0)
+			return 0;
+
+		int dc = 0;
+		string curTxtNM = string.Empty;
+		System.Text.StringBuilder sb = new System.Text.StringBuilder();
+		foreach(SRInfo sr in allsr)
+		{
+			sb.AppendLine(string.Format("{0} - {1} - {2}", sr.LayerName, sr.Index, sr.TextureName));
+			if((dc > 0) && (string.IsNullOrEmpty(sr.TextureName)))
+				continue;
+
+			if(string.Compare(curTxtNM, sr.TextureName,
+			                  StringComparison.InvariantCultureIgnoreCase) == 0)
+				continue;
+
+			curTxtNM = sr.TextureName;
+			dc++;
+		}
+		if(log)
+			Debug.Log(sb.ToString());
+		return dc;
+	}
+
+	static public void UpdateLayerOrder()
+	{
+		orderLayerNames.Clear();
+		string[] layers = GetSortingLayerNames();
+		foreach(string l in layers)
+			orderLayerNames.Add(l);
+	}
 
 	static public void Update(SpriteRenderer[] sr)
 	{
-		_layers.Clear();
+		_Layers.Clear();
 		// set all SpriteRenderer information
 		for(int i = 0; i < sr.Length; i++)
 		{
 			int layerID = sr[i].sortingLayerID;
 			string layerName = sr[i].sortingLayerName.ToLower();
-			
+			if((layerID == 0) && (string.IsNullOrEmpty(layerName)))
+				layerName = DEFAULTLAYERNAME;
+
 			SRLayer tmp = null;
 //			if(!_layers.ContainsKey(layerID))
-			if(!_layers.ContainsKey(layerName))
+			if(!_Layers.ContainsKey(layerName))
 			{
 				tmp = new SRLayer(layerID, sr[i].gameObject.name, sr[i]);
 //				_layers.Add(layerID, tmp);
-				_layers.Add(layerName, tmp);
+				_Layers.Add(layerName, tmp);
 			}
 			
 //			tmp = _layers[layerID];
-			tmp = _layers[layerName];
+			tmp = _Layers[layerName];
 			string name = string.Format("{0}/{1}", sr[i].transform.parent.name, sr[i].gameObject.name);
 			tmp.Add(sr[i].sortingOrder, name, sr[i]);
 		}
 		
 		// sorting Orders data
-		foreach(SRLayer data in _layers.Values)
+		foreach(SRLayer data in _Layers.Values)
 		{
 			data.Orders.Sort(delegate(List<SRInfo> x, List<SRInfo> y)
 			{
@@ -717,7 +813,7 @@ static public class SpriteManager
 				o.Sort();
 		}
 	}
-
+	
 	static public void Update(GameObject go)
 	{
 		SpriteRenderer[] sr = go.GetComponentsInChildren<SpriteRenderer>();
@@ -729,31 +825,39 @@ static public class SpriteManager
 		get
 		{
 			// to list and sotring Layers data
-			_layerlist.Clear();
-			foreach(SRLayer data in _layers.Values)
-				_layerlist.Add(data);
+			listLayers.Clear();
+			foreach(SRLayer data in _Layers.Values)
+				listLayers.Add(data);
 			
-			_layerlist.Sort();
-			return _layerlist;
+			listLayers.Sort();
+			return listLayers;
 		}
 	}
-
-	static public SRLayer Layer(string layername)
+	
+	static private SRLayer Layer(string layername)
 	{
-		if(_layers.ContainsKey(layername))
-			return _layers[layername];
+		if(_Layers.ContainsKey(layername))
+			return _Layers[layername];
 		else
 			return null;
 	}
-
+	
 	static public int Count
 	{
 		get
 		{
-			if(_layerlist == null)
+			if(listLayers == null)
 				return 0;
 			else
-				return _layers.Count;
+				return _Layers.Count;
+		}
+	}
+
+	static public int DrawCalls
+	{
+		get
+		{
+			return GetDrawCalls(false);
 		}
 	}
 }
