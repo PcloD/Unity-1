@@ -8,6 +8,28 @@
  * 	referance:
  *  - UIDrawCallOverview: http://www.tasharen.com/forum/index.php?topic=6166.0
  * */
+/*
+sprite draw call算法
+ex: texture a: @, texture b: #, null: ~
+從左到右遞增order(same layer)
+@@##~~@@ => draw call: 3
+@@~@@##~ => draw call: 3
+@@~@@#@~ => draw call: 4
+~~@@##~~ => draw call: 2
+~@~ => draw call: 1
+@~@ => draw call: 2
+兩個同texture上的sprite如果中間有一個空的sprite會另外算一個draw call.
+
+bug?
+step 1:
+@@@ => draw call: 1
+step 2:
+@~@ => draw call: 1
+step 3:
+@#@ => draw call: 2
+step 4:
+@~@ => draw call: 2
+*/
 using UnityEngine;
 using System.Collections;
 using UnityEditor;
