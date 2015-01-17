@@ -54,7 +54,9 @@ public static class ParticleShaderHelper
 
             foreach (var file in files)
             {
-                var assetPath = EditorUtils.GetAssetPath(file);
+                var fileInfo = new FileInfo(file);
+                var assetPath = Path.Combine(fileInfo.DirectoryName, Path.GetFileName(file));
+                assetPath = assetPath.Substring(Application.dataPath.Length - 6);
                 var prefab = AssetDatabase.LoadAssetAtPath(assetPath, typeof(GameObject)) as GameObject;
 
                 if (prefab == null)
@@ -62,7 +64,7 @@ public static class ParticleShaderHelper
                     continue;
                 }
 
-                var renderers = ComponentUtils.GetComponents<Renderer>(prefab);
+                var renderers = ComponentUtil.GetComponents<Renderer>(prefab);
 
                 if (renderers == null)
                 {
