@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public static class NGUILabelExtension
+public static class NguiLabelExtension
 {
   public static void SafeText(this UILabel self, string value)
   {
